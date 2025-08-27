@@ -1,0 +1,17 @@
+{
+    "name": "esoftdream/helper",
+    "type": "esoftdream-module",
+    "license": "proprietary",
+    "require": {
+        "php": "^8.0",
+        "codeigniter4/framework": "^4"
+    },
+    "autoload": {
+        "psr-4": {
+            "Esoftdream\\Helper\\": "src/"
+        },
+        "files": [
+            "src/Helpers/query_helper.php"
+        ]
+    }
+}
