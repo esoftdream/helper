@@ -1,7 +1,7 @@
 {
     "name": "esoftdream/helper",
-    "type": "esoftdream-module",
     "license": "proprietary",
+    "type": "esoftdream-module",
     "require": {
         "php": "^8.0",
         "codeigniter4/framework": "^4"
