@@ -13,5 +13,8 @@
         "files": [
             "src/Helpers/query_helper.php"
         ]
+    },
+    "require-dev": {
+        "rector/rector": "^2.1"
     }
 }
