@@ -739,103 +739,106 @@ if (! function_exists('generate_detail_query')) {
 }
 
 if (! function_exists('generate_data_query')) {
-    function generate_data_query($params, $query, BaseConnection $db, $isArray = true, $returnQuery = false)
+    function generate_data_query(array $params, array $query, BaseConnection $db, $isArray = true, $returnQuery = false)
     {
-        $limit = 10;
-        if (isset($query['limit'])) {
-            $limit = $query['limit'] == '' ? 10 : $query['limit'];
-        }
-        if (isset($params['limit'])) {
-            $limit = (int) $params['limit'] <= 0 ? $limit : (int) $params['limit'];
-        }
-        if ($limit > 100) {
-            $limit = 100;
-        }
+        // =========================
+        // Pagination Setup
+        // =========================
+        $limit = isset($params['limit'])
+            ? max(1, min(100, (int) $params['limit']))
+            : (isset($query['limit']) && $query['limit'] !== '' ? (int) $query['limit'] : 10);
 
-        $page = 1;
-        if (isset($params['page'])) {
-            $page = (int) $params['page'] <= 0 ? 1 : (int) $params['page'];
-        }
-
+        $page = isset($params['page']) ? max(1, (int) $params['page']) : 1;
         $start = ($page - 1) * $limit;
 
+        // normalize pagination bool
         $pagination = true;
         if (isset($params['pagination_bool'])) {
-            $pagination = $params['pagination_bool'] == '1' ? true : false;
+            $pagination = filter_var($params['pagination_bool'], FILTER_VALIDATE_BOOLEAN);
         }
         if (isset($query['pagination'])) {
-            $pagination = $query['pagination'];
+            $pagination = filter_var($query['pagination'], FILTER_VALIDATE_BOOLEAN);
         }
 
-        $fieldShow = generate_field_query($query['field_show']);
-
+        // =========================
+        // Fields & Filtering
+        // =========================
+        $fieldShow = generate_field_query($query['field_show'] ?? []);
         $filterQuery = ['query' => '', 'value' => []];
+
         $filterQuery = filter_params($params, $fieldShow['field'], $filterQuery);
+
         if (isset($params['filter'])) {
             $filterQuery = filter_params_array($params['filter'], $fieldShow['field'], $filterQuery);
         }
-        if (isset($params['search']) && ! empty($params['search'])) {
-            $filterQuery = search_query($params['search'], $query['field_search'], $filterQuery);
+
+        if (! empty($params['search'])) {
+            $filterQuery = search_query($params['search'], $query['field_search'] ?? [], $filterQuery);
         }
 
         $whereParams = isset($query['where_detail']) && is_array($query['where_detail']) ? $query['where_detail'] : [];
         $filterQuery = where_detail($whereParams, $filterQuery);
 
-        $groupBy = isset($query['group_by']) && $query['group_by'] != '' ? 'GROUP BY ' . $query['group_by'] : '';
+        $groupBy = ! empty($query['group_by']) ? 'GROUP BY ' . $query['group_by'] : '';
         $havingParams = isset($query['having']) && is_array($query['having']) ? $query['having'] : [];
-        $havingQuery['query'] = '';
-        $havingQuery['value'] = $filterQuery['value'];
+
+        $havingQuery = ['query' => '', 'value' => $filterQuery['value']];
         $havingQuery = where_detail($havingParams, $havingQuery);
 
+        // =========================
+        // Sorting
+        // =========================
         $orderQuery = '';
         $sortParams = [];
+
         $byPass = false;
-        if (isset($params['sort']) && $params['sort'] != '') {
-            $sortParams = explode(',', $params['sort']);
-        }
-        if (isset($query['order']) && $query['order'] != '') {
-            $sortParams = explode(',', $query['order']);
+        if (! empty($query['order'])) {
+            $sortParams = explode(',', (string) $query['order']);
             $byPass = true;
+        } elseif (! empty($params['sort'])) {
+            $sortParams = explode(',', (string) $params['sort']);
         }
 
-        foreach ($sortParams as $value) {
-            $dir = 'ASC';
-            if (str_starts_with($value, '-')) {
-                $dir = 'DESC';
-                $value = str_replace('-', '', $value);
-            }
-            if ($byPass) {
-                $orderQuery .= "{$value} {$dir},";
-            } else {
-                if (isset($fieldShow['field'][$value])) {
-                    $orderQuery .= "{$value} {$dir},";
-                }
+        foreach ($sortParams as $field) {
+            $dir = str_starts_with($field, '-') ? 'DESC' : 'ASC';
+            $field = ltrim($field, '-');
+
+            if ($byPass || isset($fieldShow['field'][$field])) {
+                $orderQuery .= "{$field} {$dir},";
             }
         }
 
+        if ($orderQuery !== '') {
+            $orderQuery = ' ORDER BY ' . rtrim($orderQuery, ',');
+        }
+
+        // =========================
+        // Build Select Query
+        // =========================
         $selectQuery = empty($fieldShow['sql']) ? '*' : implode(', ', $fieldShow['sql']);
 
         $sqlQuery = "SELECT {$selectQuery} {$query['table_and_join']}";
 
-        if ($filterQuery['query'] != '') {
-            $sqlQuery .= ' WHERE' . ltrim(trim($filterQuery['query']), 'AND');
+        if ($filterQuery['query'] !== '') {
+            $sqlQuery .= ' WHERE' . ltrim(trim((string) $filterQuery['query']), 'AND');
         }
 
-        if ($groupBy != '') {
+        if ($groupBy !== '') {
             $sqlQuery .= ' ' . $groupBy;
-            if ($havingQuery['query'] != '') {
-                $sqlQuery .= ' HAVING' . ltrim(trim($havingQuery['query']), 'AND');
+            if ($havingQuery['query'] !== '') {
+                $sqlQuery .= ' HAVING' . ltrim(trim((string) $havingQuery['query']), 'AND');
             }
         }
 
-        if ($orderQuery != '') {
-            $sqlQuery .= ' ORDER BY ' . rtrim($orderQuery, ',');
-        }
+        $sqlQuery .= $orderQuery;
 
         if ($pagination) {
             $sqlQuery .= " LIMIT {$start}, {$limit}";
         }
 
+        // =========================
+        // Execute Main Query
+        // =========================
         $queryResult = $db->query($sqlQuery, $havingQuery['value']);
 
         $dataReturn = [];
@@ -843,39 +846,60 @@ if (! function_exists('generate_data_query')) {
 
         if ($queryResult->getNumRows() > 0) {
             foreach ($queryResult->getResultArray() as $row) {
-                if (! $isArray) {
-                    $dataReturn['results'][] = (object) sanitization_response($row);
-                } else {
-                    $dataReturn['results'][] = sanitization_response($row);
-                }
+                $dataReturn['results'][] = ! $isArray
+                    ? (object) sanitization_response($row)
+                    : sanitization_response($row);
             }
         }
 
+        // Debug mode: return SQL string
         if ($returnQuery) {
-            return (string) $db->getLastQuery();
+            return $sqlQuery;
         }
+
+        // =========================
+        // Pagination Count
+        // =========================
         if ($pagination) {
-            $sqlQuery = "SELECT count(*) as total {$query['table_and_join']}";
-            if ($filterQuery['query'] != '') {
-                $sqlQuery .= ' WHERE' . ltrim(trim($filterQuery['query']), 'AND');
-            }
-            if ($groupBy != '') {
-                $sqlQuery = "SELECT count(*) as total FROM ( SELECT {$selectQuery} {$query['table_and_join']} ";
-                if ($filterQuery['query'] != '') {
-                    $sqlQuery .= ' WHERE' . ltrim(trim($filterQuery['query']), 'AND');
-                }
-                $sqlQuery .= ' ' . $groupBy;
-                if ($havingQuery['query'] != '') {
-                    $sqlQuery .= ' HAVING' . ltrim(trim($havingQuery['query']), 'AND');
-                }
-                $sqlQuery .= ' )r';
-            }
-            $queryPagination = $db->query($sqlQuery, $havingQuery['value']);
-            $total = $queryPagination->getRow()->total;
+            $countQuery = buildCountQuery($query, $filterQuery, $groupBy, $havingQuery, $selectQuery);
+            $queryPagination = $db->query($countQuery, $havingQuery['value']);
+            $total = (int) $queryPagination->getRow()->total;
             $dataReturn['pagination'] = page_generate($total, $page, $limit);
         }
 
         return $dataReturn;
+    }
+
+    /**
+     * Helper untuk membangun query count
+     *
+     * @param mixed $query
+     * @param mixed $filterQuery
+     * @param mixed $groupBy
+     * @param mixed $havingQuery
+     * @param mixed $selectQuery
+     */
+    function buildCountQuery(array $query, array $filterQuery, string $groupBy, array $havingQuery, string $selectQuery)
+    {
+        if ($groupBy === '') {
+            $sql = "SELECT count(*) as total {$query['table_and_join']}";
+            if ($filterQuery['query'] !== '') {
+                $sql .= ' WHERE' . ltrim(trim((string) $filterQuery['query']), 'AND');
+            }
+
+            return $sql;
+        }
+
+        $sql = "SELECT count(*) as total FROM ( SELECT {$selectQuery} {$query['table_and_join']}";
+        if ($filterQuery['query'] !== '') {
+            $sql .= ' WHERE' . ltrim(trim((string) $filterQuery['query']), 'AND');
+        }
+        $sql .= ' ' . $groupBy;
+        if ($havingQuery['query'] !== '') {
+            $sql .= ' HAVING' . ltrim(trim((string) $havingQuery['query']), 'AND');
+        }
+
+        return $sql . ' ) r';
     }
 }
 
