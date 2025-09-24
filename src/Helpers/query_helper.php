@@ -419,11 +419,11 @@ if (! function_exists('filter_params_array')) {
                             $fi = explode('::', $value);
                             if ($comparison == 'yes') {
                                 $sqlSearch .= " AND {$field} IN :{$fieldKey}:";
-                                $queryReturn['value'][$fieldKey] = array_map(fn($value) => (string) $value, $fi);
+                                $queryReturn['value'][$fieldKey] = array_map(fn($value) => $value, $fi);
                             }
                             if ($comparison == 'no') {
                                 $sqlSearch .= " AND {$field} NOT IN :{$fieldKey}:";
-                                $queryReturn['value'][$fieldKey] = array_map(fn($value) => (string) $value, $fi);
+                                $queryReturn['value'][$fieldKey] = array_map(fn($value) => $value, $fi);
                             }
                             if ($comparison == 'bet') {
                                 $fieldKey1 = $fieldKey . '_1';
@@ -751,7 +751,47 @@ if (! function_exists('generate_data_query')) {
         }
 
         if (! empty($params['search'])) {
-            $filterQuery = search_query($params['search'], $query['field_search'] ?? array_keys($query['field_show']), $filterQuery);
+            // Prioritas 1: Ambil dari $params['field_search'] jika ada.
+            // Sesuai komentar Anda, kita pecah stringnya menjadi array.
+            $finalSearchKeys = [];
+
+            if (!empty($params['field_search'])) {
+                // 1. Ubah string "name, product_code, id" menjadi array
+                $fieldsToProcess = explode(',', $params['field_search']);
+
+                // 2. Proses setiap field satu per satu
+                foreach ($fieldsToProcess as $field) {
+                    $field = trim($field); // Hapus spasi yang tidak perlu
+
+                    // 3. Cek apakah field ini adalah KEY yang valid?
+                    if (array_key_exists($field, $query['field_show'])) {
+                        // Jika YA, langsung tambahkan ke hasil akhir
+                        $finalSearchKeys[] = $field;
+                    } else {
+                        // 4. Jika BUKAN key, coba cari sebagai VALUE
+                        $key = array_search($field, $query['field_show']);
+
+                        // Jika value ditemukan, $key akan berisi key-nya (e.g., 'product_name')
+                        // Jika tidak ditemukan, $key akan bernilai 'false'
+                        if ($key !== false) {
+                            $finalSearchKeys[] = $key;
+                        }
+                    }
+                }
+
+                $searchFields = $finalSearchKeys;
+            }
+            // Prioritas 2: Jika tidak ada, ambil dari $query['field_search'].
+            elseif (!empty($query['field_search'])) {
+                $searchFields = $query['field_search'];
+            }
+            // Prioritas 3 (Pilihan Terakhir): Jika keduanya tidak ada, ambil dari field yang ditampilkan.
+            else {
+                $searchFields = array_keys($query['field_show']);
+            }
+
+            // Panggil fungsi search_query dengan field yang sudah ditentukan
+            $filterQuery = search_query($params['search'], $searchFields, $filterQuery);
         }
 
         $whereParams = isset($query['where_detail']) && is_array($query['where_detail']) ? $query['where_detail'] : [];
