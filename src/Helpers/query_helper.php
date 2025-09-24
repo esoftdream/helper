@@ -79,7 +79,7 @@ if (! function_exists('page_generate')) {
             $detail = [];
         } else {
             for ($i = $from; $i <= $to; $i++) {
-                $detail[] = (int) $i;
+                $detail[] = $i;
             }
             if ($from != 1) {
                 $firstpageBool = true;
@@ -94,11 +94,7 @@ if (! function_exists('page_generate')) {
             $totalDisplay = $limit;
         }
         if ($pagenum == $totalPage) {
-            if (($total % $limit) != 0) {
-                $totalDisplay = $total % $limit;
-            } else {
-                $totalDisplay = $limit;
-            }
+            $totalDisplay = $total % $limit != 0 ? $total % $limit : $limit;
         }
 
         return [
@@ -236,10 +232,8 @@ if (! function_exists('filter_params')) {
                         if (str_ends_with($field, 'datetime')) {
                             if (validate_date($val)) {
                                 $field = "DATE({$field})";
-                            } else {
-                                if (! validate_date($val, 'Y-m-d H:i:s')) {
-                                    $val = '';
-                                }
+                            } elseif (! validate_date($val, 'Y-m-d H:i:s')) {
+                                $val = '';
                             }
 
                             if ($comparison == 'le' || $comparison == 'ls' || $comparison == 'lse') {
@@ -257,6 +251,7 @@ if (! function_exists('filter_params')) {
                         if ($val != '') {
                             switch ($comparison) {
                                 case 'eq':
+                                default:
                                     $queryFilter .= " AND {$field} = :{$fieldKey}: ";
                                     $queryReturn['value'][$fieldKey] = $val;
                                     break;
@@ -312,11 +307,6 @@ if (! function_exists('filter_params')) {
                                     $queryFilter .= " AND {$field} NOT IN :{$fieldKey}: ";
                                     $queryReturn['value'][$fieldKey] = $fi;
                                     break;
-
-                                default:
-                                    $queryFilter .= " AND {$field} = :{$fieldKey}: ";
-                                    $queryReturn['value'][$fieldKey] = $val;
-                                    break;
                             }
                         }
                     }
@@ -327,10 +317,8 @@ if (! function_exists('filter_params')) {
                             $value = '';
                         }
                     }
-                    if (str_ends_with($field, 'date')) {
-                        if (! validate_date($value)) {
-                            $value = '';
-                        }
+                    if (str_ends_with($field, 'date') && ! validate_date($value)) {
+                        $value = '';
                     }
                     if ($value != '') {
                         $queryFilter .= " AND {$field} = :{$fieldKey}: ";
@@ -363,11 +351,7 @@ if (! function_exists('filter_params_array')) {
                 $value = $row['value'] ?? '';
                 $comparison = $row['comparison'] ?? '';
 
-                if (! isset($fieldAllowed[$field])) {
-                    $field = '';
-                } else {
-                    $field = $fieldAllowed[$field];
-                }
+                $field = ! isset($fieldAllowed[$field]) ? '' : $fieldAllowed[$field];
 
                 if ($field == '' || $value == '') {
                     $type = '';
@@ -394,17 +378,17 @@ if (! function_exists('filter_params_array')) {
 
                             case '<':
                                 $sqlSearch .= " AND {$field} LIKE :{$fieldKey}:";
-                                $queryReturn['value'][$fieldKey] = (string) ("{$value}%");
+                                $queryReturn['value'][$fieldKey] = "{$value}%";
                                 break;
 
                             case '>':
-                                $queryReturn['value'][$fieldKey] = (string) ("%{$value}");
+                                $queryReturn['value'][$fieldKey] = "%{$value}";
                                 $sqlSearch .= ' AND ' . $field . " LIKE '%" . $value . "'";
                                 break;
 
                             case '<>':
                                 $sqlSearch .= " AND {$field} LIKE :{$fieldKey}:";
-                                $queryReturn['value'][$fieldKey] = (string) ("%{$value}%");
+                                $queryReturn['value'][$fieldKey] = "%{$value}%";
                                 break;
                         }
                         break;
@@ -435,22 +419,18 @@ if (! function_exists('filter_params_array')) {
                             $fi = explode('::', $value);
                             if ($comparison == 'yes') {
                                 $sqlSearch .= " AND {$field} IN :{$fieldKey}:";
-                                $queryReturn['value'][$fieldKey] = array_map(function ($value) {
-                                    return (string) $value;
-                                }, $fi);
+                                $queryReturn['value'][$fieldKey] = array_map(fn($value) => (string) $value, $fi);
                             }
                             if ($comparison == 'no') {
                                 $sqlSearch .= " AND {$field} NOT IN :{$fieldKey}:";
-                                $queryReturn['value'][$fieldKey] = array_map(function ($value) {
-                                    return (string) $value;
-                                }, $fi);
+                                $queryReturn['value'][$fieldKey] = array_map(fn($value) => (string) $value, $fi);
                             }
                             if ($comparison == 'bet') {
                                 $fieldKey1 = $fieldKey . '_1';
                                 $fieldKey2 = $fieldKey . '_2';
                                 $sqlSearch .= " AND {$field} BETWEEN :{$fieldKey1}: AND :{$fieldKey2}:";
-                                $queryReturn['value'][$fieldKey1] = (string) $fi[0];
-                                $queryReturn['value'][$fieldKey2] = (string) $fi[1];
+                                $queryReturn['value'][$fieldKey1] = $fi[0];
+                                $queryReturn['value'][$fieldKey2] = $fi[1];
                             }
                         } else {
                             $sqlSearch .= " AND {$field} = :{$fieldKey}:";
@@ -480,13 +460,11 @@ if (! function_exists('filter_params_array')) {
                                     $fieldKey2 = $fieldKey . '_2';
                                     $sqlSearch .= " AND {$field} BETWEEN :{$fieldKey1}: AND :{$fieldKey2}:";
                                     $queryReturn['value'][$fieldKey1] = (string) $value1;
-                                    $queryReturn['value'][$fieldKey2] = (string) $value2;
+                                    $queryReturn['value'][$fieldKey2] = $value2;
                                 }
-                            } else {
-                                if (validate_date($value1)) {
-                                    $sqlSearch .= " AND {$field} {$comparison} :{$fieldKey}:";
-                                    $queryReturn['value'][$fieldKey] = (string) $value;
-                                }
+                            } elseif (validate_date($value1)) {
+                                $sqlSearch .= " AND {$field} {$comparison} :{$fieldKey}:";
+                                $queryReturn['value'][$fieldKey] = (string) $value;
                             }
                         }
                         if (str_ends_with($field, 'datetime')) {
@@ -510,20 +488,18 @@ if (! function_exists('filter_params_array')) {
                                 if (validate_date($value1, 'Y-m-d H:i:s') && validate_date($value2, 'Y-m-d H:i:s')) {
                                     $sqlSearch .= " AND {$field} BETWEEN :{$fieldKey1}: AND :{$fieldKey2}:";
                                     $queryReturn['value'][$fieldKey1] = (string) $value1;
-                                    $queryReturn['value'][$fieldKey2] = (string) $value2;
+                                    $queryReturn['value'][$fieldKey2] = $value2;
                                 } elseif (validate_date($value1) && validate_date($value2)) {
                                     $sqlSearch .= " AND DATE({$field}) BETWEEN :{$fieldKey1}: AND :{$fieldKey2}:";
                                     $queryReturn['value'][$fieldKey1] = (string) $value1;
-                                    $queryReturn['value'][$fieldKey2] = (string) $value2;
+                                    $queryReturn['value'][$fieldKey2] = $value2;
                                 }
-                            } else {
-                                if (validate_date($value1, 'Y-m-d H:i:s')) {
-                                    $sqlSearch .= " AND {$field} {$comparison} :{$fieldKey}:";
-                                    $queryReturn['value'][$fieldKey] = (string) $value1;
-                                } elseif (validate_date($value1)) {
-                                    $sqlSearch .= " AND DATE({$field}) {$comparison} :{$fieldKey}:";
-                                    $queryReturn['value'][$fieldKey] = (string) $value1;
-                                }
+                            } elseif (validate_date($value1, 'Y-m-d H:i:s')) {
+                                $sqlSearch .= " AND {$field} {$comparison} :{$fieldKey}:";
+                                $queryReturn['value'][$fieldKey] = (string) $value1;
+                            } elseif (validate_date($value1)) {
+                                $sqlSearch .= " AND DATE({$field}) {$comparison} :{$fieldKey}:";
+                                $queryReturn['value'][$fieldKey] = (string) $value1;
                             }
                         }
                         break;
@@ -539,7 +515,6 @@ if (! function_exists('filter_params_array')) {
 
 if (! function_exists('search_query')) {
     /**
-     * @param string $search
      * @param string[] $field
      * @param array<string, string> $queryReturn
      * @return array<string, string>
@@ -548,11 +523,16 @@ if (! function_exists('search_query')) {
     {
         $query = '';
         foreach ($field as $row) {
-            if (! empty($search)) {
-                if (! str_ends_with($row, 'datetime') && ! str_ends_with($row, 'date')) {
-                    $query .= $row . ' LIKE :search: OR ';
-                }
+            if ($search === '' || $search === '0') {
+                continue;
             }
+            if (str_ends_with($row, 'datetime')) {
+                continue;
+            }
+            if (str_ends_with($row, 'date')) {
+                continue;
+            }
+            $query .= $row . ' LIKE :search: OR ';
         }
         if ($query != '') {
             $queryReturn['query'] = $queryReturn['query'] . ' AND (' . rtrim($query, 'OR ') . ') ';
@@ -573,7 +553,7 @@ if (! function_exists('where_detail')) {
     {
         foreach ($arrWhere as $key => $value) {
             if ($key === 'or') {
-                foreach ($value as $x => $y) {
+                foreach ($value as $y) {
                     $query = '';
 
                     foreach ($y as $k => $v) {
@@ -597,22 +577,20 @@ if (! function_exists('where_detail')) {
                         $queryReturn['query'] .= ' AND ( ' . ltrim($query, 'OR ') . ')';
                     }
                 }
-            } else {
-                if (is_array($value) && isset($value['c'])) {
-                    if ($value['c'] === 'BETWEEN') {
-                        $fieldKey1 = $key . '_1';
-                        $fieldKey2 = $key . '_2';
-                        $queryReturn['query'] .= " AND {$key} BETWEEN :{$fieldKey1}: AND :{$fieldKey2}: ";
-                        $queryReturn['value'][$fieldKey1] = $value['v'];
-                        $queryReturn['value'][$fieldKey2] = $value['v2'];
-                    } else {
-                        $queryReturn['query'] .= " AND {$key} {$value['c']} :{$key}:";
-                        $queryReturn['value'][$key] = $value['v'];
-                    }
+            } elseif (is_array($value) && isset($value['c'])) {
+                if ($value['c'] === 'BETWEEN') {
+                    $fieldKey1 = $key . '_1';
+                    $fieldKey2 = $key . '_2';
+                    $queryReturn['query'] .= " AND {$key} BETWEEN :{$fieldKey1}: AND :{$fieldKey2}: ";
+                    $queryReturn['value'][$fieldKey1] = $value['v'];
+                    $queryReturn['value'][$fieldKey2] = $value['v2'];
                 } else {
-                    $queryReturn['query'] .= " AND {$key} = :{$key}:";
-                    $queryReturn['value'][$key] = $value;
+                    $queryReturn['query'] .= " AND {$key} {$value['c']} :{$key}:";
+                    $queryReturn['value'][$key] = $value['v'];
                 }
+            } else {
+                $queryReturn['query'] .= " AND {$key} = :{$key}:";
+                $queryReturn['value'][$key] = $value;
             }
         }
 
