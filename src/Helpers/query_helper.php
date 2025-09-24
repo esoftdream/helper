@@ -750,48 +750,51 @@ if (! function_exists('generate_data_query')) {
             $filterQuery = filter_params_array($params['filter'], $fieldShow['field'], $filterQuery);
         }
 
-        if (! empty($params['search'])) {
-            // Prioritas 1: Ambil dari $params['field_search'] jika ada.
-            // Sesuai komentar Anda, kita pecah stringnya menjadi array.
-            $finalSearchKeys = [];
+        if (!empty($params['search'])) {
 
+            // Siapkan variabel untuk menampung field yang akan digunakan untuk pencarian.
+            $searchFields = [];
+
+            // --- PRIORITAS 1: Gunakan $params['field_search'] jika tersedia ---
+            // Logika ini paling kompleks karena memvalidasi setiap kolom.
             if (!empty($params['field_search'])) {
-                // 1. Ubah string "name, product_code, id" menjadi array
+
+                // Ubah string input (misal: "name, product_code, kolom_salah") menjadi array.
                 $fieldsToProcess = explode(',', $params['field_search']);
 
-                // 2. Proses setiap field satu per satu
                 foreach ($fieldsToProcess as $field) {
-                    $field = trim($field); // Hapus spasi yang tidak perlu
+                    $field = trim($field); // Bersihkan dari spasi
 
-                    // 3. Cek apakah field ini adalah KEY yang valid?
+                    // Cek apakah field adalah KEY yang valid (contoh: 'product_name').
                     if (array_key_exists($field, $query['field_show'])) {
-                        // Jika YA, langsung tambahkan ke hasil akhir
-                        $finalSearchKeys[] = $field;
-                    } else {
-                        // 4. Jika BUKAN key, coba cari sebagai VALUE
+                        $searchFields[] = $field;
+                    }
+                    // Jika bukan key, cek apakah field adalah VALUE yang valid (contoh: 'name').
+                    else {
                         $key = array_search($field, $query['field_show']);
-
-                        // Jika value ditemukan, $key akan berisi key-nya (e.g., 'product_name')
-                        // Jika tidak ditemukan, $key akan bernilai 'false'
+                        // Jika value ditemukan, tambahkan KEY yang sesuai ke hasil.
                         if ($key !== false) {
-                            $finalSearchKeys[] = $key;
+                            $searchFields[] = $key;
                         }
                     }
+                    // Jika field bukan key maupun value yang valid, maka akan otomatis tereliminasi.
                 }
-
-                $searchFields = $finalSearchKeys;
             }
-            // Prioritas 2: Jika tidak ada, ambil dari $query['field_search'].
+
+            // --- PRIORITAS 2: Gunakan $query['field_search'] jika prioritas 1 gagal ---
             elseif (!empty($query['field_search'])) {
                 $searchFields = $query['field_search'];
             }
-            // Prioritas 3 (Pilihan Terakhir): Jika keduanya tidak ada, ambil dari field yang ditampilkan.
+
+            // --- PRIORITAS 3: Fallback ke semua field yang bisa ditampilkan ---
             else {
                 $searchFields = array_keys($query['field_show']);
             }
 
-            // Panggil fungsi search_query dengan field yang sudah ditentukan
-            $filterQuery = search_query($params['search'], $searchFields, $filterQuery);
+            // Panggil fungsi search_query HANYA jika ada field yang valid untuk dicari.
+            if (!empty($searchFields)) {
+                $filterQuery = search_query($params['search'], $searchFields, $filterQuery);
+            }
         }
 
         $whereParams = isset($query['where_detail']) && is_array($query['where_detail']) ? $query['where_detail'] : [];
