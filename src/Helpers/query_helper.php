@@ -773,7 +773,7 @@ if (! function_exists('generate_data_query')) {
         }
 
         if (! empty($params['search'])) {
-            $filterQuery = search_query($params['search'], $query['field_search'] ?? [], $filterQuery);
+            $filterQuery = search_query($params['search'], $query['field_search'] ?? array_keys($query['field_show']), $filterQuery);
         }
 
         $whereParams = isset($query['where_detail']) && is_array($query['where_detail']) ? $query['where_detail'] : [];
