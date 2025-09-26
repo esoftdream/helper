@@ -419,11 +419,11 @@ if (! function_exists('filter_params_array')) {
                             $fi = explode('::', $value);
                             if ($comparison == 'yes') {
                                 $sqlSearch .= " AND {$field} IN :{$fieldKey}:";
-                                $queryReturn['value'][$fieldKey] = array_map(fn($value) => $value, $fi);
+                                $queryReturn['value'][$fieldKey] = array_map(fn ($value) => $value, $fi);
                             }
                             if ($comparison == 'no') {
                                 $sqlSearch .= " AND {$field} NOT IN :{$fieldKey}:";
-                                $queryReturn['value'][$fieldKey] = array_map(fn($value) => $value, $fi);
+                                $queryReturn['value'][$fieldKey] = array_map(fn ($value) => $value, $fi);
                             }
                             if ($comparison == 'bet') {
                                 $fieldKey1 = $fieldKey . '_1';
@@ -716,6 +716,29 @@ if (! function_exists('generate_detail_query')) {
     }
 }
 
+if (!function_exists('normalize_array')) {
+    /**
+     * Normalisasi array agar semua key konsisten
+     *
+     * @param array $arr
+     * @return array
+     */
+    function normalize_array(array $arr): array
+    {
+        $normalized = [];
+        foreach ($arr as $key => $value) {
+            if (is_int($key)) {
+                // Kalau key numeric, jadikan value sebagai key dan value
+                $normalized[$value] = $value;
+            } else {
+                // Kalau associative → tetap pakai key dan value
+                $normalized[$key] = $value;
+            }
+        }
+        return $normalized;
+    }
+}
+
 if (! function_exists('generate_data_query')) {
     function generate_data_query(array $params, array $query, BaseConnection $db, $isArray = true, $returnQuery = false)
     {
@@ -754,10 +777,12 @@ if (! function_exists('generate_data_query')) {
 
             // Siapkan variabel untuk menampung field yang akan digunakan untuk pencarian.
             $searchFields = [];
+            $querySearchFields = normalize_array($query['field_show']);
 
             // --- PRIORITAS 1: Gunakan $params['field_search'] jika tersedia ---
             // Logika ini paling kompleks karena memvalidasi setiap kolom.
             if (!empty($params['field_search'])) {
+
 
                 // Ubah string input (misal: "name, product_code, kolom_salah") menjadi array.
                 $fieldsToProcess = explode(',', $params['field_search']);
@@ -766,12 +791,12 @@ if (! function_exists('generate_data_query')) {
                     $field = trim($field); // Bersihkan dari spasi
 
                     // Cek apakah field adalah KEY yang valid (contoh: 'product_name').
-                    if (array_key_exists($field, $query['field_show'])) {
+                    if (array_key_exists($field, $querySearchFields)) {
                         $searchFields[] = $field;
                     }
                     // Jika bukan key, cek apakah field adalah VALUE yang valid (contoh: 'name').
                     else {
-                        $key = array_search($field, $query['field_show']);
+                        $key = array_search($field, $querySearchFields);
                         // Jika value ditemukan, tambahkan KEY yang sesuai ke hasil.
                         if ($key !== false) {
                             $searchFields[] = $key;
@@ -788,7 +813,7 @@ if (! function_exists('generate_data_query')) {
 
             // --- PRIORITAS 3: Fallback ke semua field yang bisa ditampilkan ---
             else {
-                $searchFields = array_keys($query['field_show']);
+                $searchFields = array_keys($querySearchFields);
             }
 
             // Panggil fungsi search_query HANYA jika ada field yang valid untuk dicari.
