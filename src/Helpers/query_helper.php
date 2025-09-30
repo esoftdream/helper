@@ -19,10 +19,11 @@ if (! function_exists('page_generate')) {
     /**
      * Generate page information for pagination.
      *
-     * @param int $total Total items
+     * @param int $total   Total items
      * @param int $pagenum Current page number
-     * @param int $limit Items per page
-     * @return array<string, int|bool|array<int>> Page information
+     * @param int $limit   Items per page
+     *
+     * @return array<string, bool|int|list<int>> Page information
      */
     function page_generate(int $total, int $pagenum, int $limit): array
     {
@@ -115,68 +116,74 @@ if (! function_exists('page_generate')) {
 
 if (! function_exists('sanitization_response')) {
     /**
-     * @param array<string, mixed> $data
-     * @return array<string, mixed>
+     * Membersihkan dan mengubah tipe data array dari hasil query database.
+     *
+     * @param array $data Data asosiatif yang akan diproses.
+     *
+     * @return array Data yang sudah dibersihkan.
      */
     function sanitization_response(array $data): array
     {
-        foreach ($data as $key => $val) {
-            if (null === $val) {
-                $data[$key] = '';
+        // Menggunakan pass-by-reference (&) agar lebih efisien,
+        // karena kita memodifikasi nilai array secara langsung.
+        foreach ($data as $key => &$val) {
+            // 1. Tangani nilai NULL di awal
+            if ($val === null) {
                 $val = '';
+
+                continue; // Lanjut ke iterasi berikutnya
             }
-            if (str_ends_with($key, 'object')) {
-                $data[$key] = json_decode(empty($val) ? '{}' : $val, true);
-                if (null === $data[$key]) {
-                    $data[$key] = [];
-                }
-            }
-            if (str_ends_with($key, 'array')) {
-                $data[$key] = json_decode(empty($val) ? '[]' : $val, true);
-                if (null === $data[$key]) {
-                    $data[$key] = [];
-                }
-            }
-            if (str_ends_with($key, 'date')) {
-                if (str_starts_with($val, '0000-00-00')) {
-                    $data[$key] = '';
-                } else {
-                    $data[$key] = date('Y-m-d', strtotime($val));
-                    if (str_starts_with($data[$key], '1970-01-01')) {
-                        $data[$key] = '';
+
+            // Menggunakan switch (true) untuk struktur yang lebih bersih
+            switch (true) {
+                // 2. Tangani JSON Object & Array
+                case str_ends_with($key, 'object'):
+                case str_ends_with($key, 'array'):
+                    $decoded = json_decode(empty($val) ? '[]' : $val, true);
+                    $val = $decoded === null ? [] : $decoded;
+                    break;
+
+                    // 3. Gabungkan penanganan Date & Datetime
+                case str_ends_with($key, 'datetime'):
+                case str_ends_with($key, 'date'):
+                    if (empty($val) || str_starts_with($val, '0000-00-00')) {
+                        $val = '';
+                        break;
                     }
-                }
-            }
-            if (str_ends_with($key, 'datetime')) {
-                if (str_starts_with($val, '0000-00-00')) {
-                    $data[$key] = '';
-                } else {
-                    $data[$key] = date('Y-m-d H:i:s', strtotime($val));
-                    if (str_starts_with($data[$key], '1970-01-01')) {
-                        $data[$key] = '';
+
+                    $timestamp = strtotime($val);
+                    if ($timestamp === false || $timestamp <= 0) {
+                        $val = '';
+                    } else {
+                        $format = str_ends_with($key, 'datetime') ? 'Y-m-d H:i:s' : 'Y-m-d';
+                        $val = date($format, $timestamp);
                     }
-                }
-            }
-            if (
-                str_ends_with($key, 'latitude')
-                || str_ends_with($key, 'longitude')
-                || str_ends_with($key, 'lat')
-                || str_ends_with($key, 'long')
-            ) {
-                if (is_numeric($val)) {
-                    $data[$key] = (float) $val;
-                }
-            } elseif (
-                is_numeric($val)
-                && ! str_ends_with($key, 'id')
-                && ! strstr($key, 'is')
-                && ! str_ends_with($key, 'phone')
-            ) {
-                $data[$key] = (int) $val;
-                $val = (int) $val;
-            }
-            if (str_ends_with($key, 'bool')) {
-                $data[$key] = (bool) $val;
+                    break;
+
+                    // 4. Tangani Boolean
+                case str_ends_with($key, 'bool'):
+                    $val = (bool) $val;
+                    break;
+
+                    // 5. Penanganan Numerik (Integer dan Float)
+                case is_numeric($val):
+                    // Pengecualian untuk kolom yang numerik tapi sebaiknya tetap string
+                    if (
+                        // DIUBAH: Pengecualian ID dibuat lebih spesifik dengan `_id`
+                        str_ends_with($key, '_id')
+                        || str_contains($key, 'is_')
+                        || str_ends_with($key, 'phone')
+                    ) {
+                        break; // Biarkan sebagai string dan jangan proses lebih lanjut
+                    }
+
+                    // Cek apakah ada titik desimal untuk menentukan apakah ini float
+                    if (str_contains((string) $val, '.')) {
+                        $val = (float) $val;
+                    } else {
+                        $val = (int) $val;
+                    }
+                    break;
             }
         }
 
@@ -186,7 +193,8 @@ if (! function_exists('sanitization_response')) {
 
 if (! function_exists('generate_field_query')) {
     /**
-     * @param string[] $arr
+     * @param list<string> $arr
+     *
      * @return array<string, array<string, string>>
      */
     function generate_field_query(array $arr): array
@@ -212,9 +220,10 @@ if (! function_exists('generate_field_query')) {
 
 if (! function_exists('filter_params')) {
     /**
-     * @param array<string, mixed> $params
+     * @param array<string, mixed>  $params
      * @param array<string, string> $fieldAllowed
      * @param array<string, string> $queryReturn
+     *
      * @return array<string, string>
      */
     function filter_params(array $params, array $fieldAllowed, array $queryReturn = ['query' => '', 'value' => []]): array
@@ -335,9 +344,10 @@ if (! function_exists('filter_params')) {
 
 if (! function_exists('filter_params_array')) {
     /**
-     * @param array<string, array<string, string|bool|int|float>> $whereFilter
-     * @param array<string, string> $fieldAllowed
-     * @param array<string, string> $queryReturn
+     * @param array<string, array<string, bool|float|int|string>> $whereFilter
+     * @param array<string, string>                               $fieldAllowed
+     * @param array<string, string>                               $queryReturn
+     *
      * @return array<string, string>
      */
     function filter_params_array(array $whereFilter = [], array $fieldAllowed = [], array $queryReturn = ['query' => '', 'value' => []]): array
@@ -419,11 +429,11 @@ if (! function_exists('filter_params_array')) {
                             $fi = explode('::', $value);
                             if ($comparison == 'yes') {
                                 $sqlSearch .= " AND {$field} IN :{$fieldKey}:";
-                                $queryReturn['value'][$fieldKey] = array_map(fn ($value) => $value, $fi);
+                                $queryReturn['value'][$fieldKey] = array_map(static fn ($value) => $value, $fi);
                             }
                             if ($comparison == 'no') {
                                 $sqlSearch .= " AND {$field} NOT IN :{$fieldKey}:";
-                                $queryReturn['value'][$fieldKey] = array_map(fn ($value) => $value, $fi);
+                                $queryReturn['value'][$fieldKey] = array_map(static fn ($value) => $value, $fi);
                             }
                             if ($comparison == 'bet') {
                                 $fieldKey1 = $fieldKey . '_1';
@@ -515,13 +525,15 @@ if (! function_exists('filter_params_array')) {
 
 if (! function_exists('search_query')) {
     /**
-     * @param string[] $field
+     * @param list<string>          $field
      * @param array<string, string> $queryReturn
+     *
      * @return array<string, string>
      */
     function search_query(string $search, array $field, array $queryReturn = ['query' => '', 'value' => []]): array
     {
         $query = '';
+
         foreach ($field as $row) {
             if ($search === '' || $search === '0') {
                 continue;
@@ -545,8 +557,9 @@ if (! function_exists('search_query')) {
 
 if (! function_exists('where_detail')) {
     /**
-     * @param array<string, mixed> $arrWhere
+     * @param array<string, mixed>  $arrWhere
      * @param array<string, string> $queryReturn
+     *
      * @return array<string, string>
      */
     function where_detail(array $arrWhere, array $queryReturn = ['query' => '', 'value' => []]): array
@@ -716,16 +729,14 @@ if (! function_exists('generate_detail_query')) {
     }
 }
 
-if (!function_exists('normalize_array')) {
+if (! function_exists('normalize_array')) {
     /**
      * Normalisasi array agar semua key konsisten
-     *
-     * @param array $arr
-     * @return array
      */
     function normalize_array(array $arr): array
     {
         $normalized = [];
+
         foreach ($arr as $key => $value) {
             if (is_int($key)) {
                 // Kalau key numeric, jadikan value sebagai key dan value
@@ -735,6 +746,7 @@ if (!function_exists('normalize_array')) {
                 $normalized[$key] = $value;
             }
         }
+
         return $normalized;
     }
 }
@@ -773,17 +785,14 @@ if (! function_exists('generate_data_query')) {
             $filterQuery = filter_params_array($params['filter'], $fieldShow['field'], $filterQuery);
         }
 
-        if (!empty($params['search'])) {
-
+        if (! empty($params['search'])) {
             // Siapkan variabel untuk menampung field yang akan digunakan untuk pencarian.
             $searchFields = [];
             $querySearchFields = normalize_array($query['field_show']);
 
             // --- PRIORITAS 1: Gunakan $params['field_search'] jika tersedia ---
             // Logika ini paling kompleks karena memvalidasi setiap kolom.
-            if (!empty($params['field_search'])) {
-
-
+            if (! empty($params['field_search'])) {
                 // Ubah string input (misal: "name, product_code, kolom_salah") menjadi array.
                 $fieldsToProcess = explode(',', $params['field_search']);
 
@@ -807,7 +816,7 @@ if (! function_exists('generate_data_query')) {
             }
 
             // --- PRIORITAS 2: Gunakan $query['field_search'] jika prioritas 1 gagal ---
-            elseif (!empty($query['field_search'])) {
+            elseif (! empty($query['field_search'])) {
                 $searchFields = $query['field_search'];
             }
 
@@ -817,7 +826,7 @@ if (! function_exists('generate_data_query')) {
             }
 
             // Panggil fungsi search_query HANYA jika ada field yang valid untuk dicari.
-            if (!empty($searchFields)) {
+            if (! empty($searchFields)) {
                 $filterQuery = search_query($params['search'], $searchFields, $filterQuery);
             }
         }
