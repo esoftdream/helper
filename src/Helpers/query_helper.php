@@ -169,8 +169,8 @@ if (! function_exists('sanitization_response')) {
                 case is_numeric($val):
                     // Pengecualian untuk kolom yang numerik tapi sebaiknya tetap string
                     if (
-                        // DIUBAH: Pengecualian ID dibuat lebih spesifik dengan `_id`
-                        str_ends_with($key, '_id')
+                        // Logika ID kini menangani 'id' dan yang berakhiran '_id'
+                        ($key === 'id' || str_ends_with($key, '_id'))
                         || str_contains($key, 'is_')
                         || str_ends_with($key, 'phone')
                     ) {
