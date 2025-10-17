@@ -119,10 +119,11 @@ if (! function_exists('sanitization_response')) {
      * Membersihkan dan mengubah tipe data array dari hasil query database.
      *
      * @param array $data Data asosiatif yang akan diproses.
+     * @param list<string> $exclude_columns Daftar kolom yang dikecualikan dari konversi numerik.
      *
      * @return array Data yang sudah dibersihkan.
      */
-    function sanitization_response(array $data): array
+    function sanitization_response(array $data, array $exclude_columns = []): array
     {
         // Menggunakan pass-by-reference (&) agar lebih efisien,
         // karena kita memodifikasi nilai array secara langsung.
@@ -173,6 +174,7 @@ if (! function_exists('sanitization_response')) {
                         ($key === 'id' || str_ends_with($key, '_id'))
                         || str_contains($key, 'is_')
                         || str_ends_with($key, 'phone')
+                        || in_array($key, $exclude_columns, true)
                     ) {
                         break; // Biarkan sebagai string dan jangan proses lebih lanjut
                     }
@@ -729,13 +731,13 @@ if (! function_exists('generate_detail_query')) {
 
         $sqlQuery .= ' LIMIT 1';
 
-        $query = $db->query($sqlQuery, $havingQuery['value']);
+        $queryDb = $db->query($sqlQuery, $havingQuery['value']);
 
         $result = [];
 
-        if ($query->getNumRows() > 0) {
-            $data = $query->getRowArray();
-            $result = sanitization_response($data);
+        if ($queryDb->getNumRows() > 0) {
+            $data = $queryDb->getRowArray();
+            $result = sanitization_response($data, $query['exclude_numeric_conversion'] ?? []);
             if (! $isArray) {
                 $result = (object) $result;
             }
@@ -921,9 +923,10 @@ if (! function_exists('generate_data_query')) {
 
         if ($queryResult->getNumRows() > 0) {
             foreach ($queryResult->getResultArray() as $row) {
+                $sanitizedRow = sanitization_response($row, $query['exclude_numeric_conversion'] ?? []);
                 $dataReturn['results'][] = ! $isArray
-                    ? (object) sanitization_response($row)
-                    : sanitization_response($row);
+                    ? (object) $sanitizedRow
+                    : $sanitizedRow;
             }
         }
 
