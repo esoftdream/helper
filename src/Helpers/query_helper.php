@@ -144,7 +144,7 @@ if (! function_exists('sanitization_response')) {
                     $val = $decoded === null ? [] : $decoded;
                     break;
 
-                    // 3. Gabungkan penanganan Date & Datetime
+                // 3. Gabungkan penanganan Date & Datetime
                 case str_ends_with($key, 'datetime'):
                 case str_ends_with($key, 'date'):
                     if (empty($val) || str_starts_with($val, '0000-00-00')) {
@@ -161,12 +161,12 @@ if (! function_exists('sanitization_response')) {
                     }
                     break;
 
-                    // 4. Tangani Boolean
+                // 4. Tangani Boolean
                 case str_ends_with($key, 'bool'):
                     $val = (bool) $val;
                     break;
 
-                    // 5. Penanganan Numerik (Integer dan Float)
+                // 5. Penanganan Numerik (Integer dan Float)
                 case is_numeric($val):
                     // Pengecualian untuk kolom yang numerik tapi sebaiknya tetap string
                     if (
@@ -431,11 +431,11 @@ if (! function_exists('filter_params_array')) {
                             $fi = explode('::', $value);
                             if ($comparison == 'yes') {
                                 $sqlSearch .= " AND {$field} IN :{$fieldKey}:";
-                                $queryReturn['value'][$fieldKey] = array_map(static fn ($value) => $value, $fi);
+                                $queryReturn['value'][$fieldKey] = array_map(static fn($value) => $value, $fi);
                             }
                             if ($comparison == 'no') {
                                 $sqlSearch .= " AND {$field} NOT IN :{$fieldKey}:";
-                                $queryReturn['value'][$fieldKey] = array_map(static fn ($value) => $value, $fi);
+                                $queryReturn['value'][$fieldKey] = array_map(static fn($value) => $value, $fi);
                             }
                             if ($comparison == 'bet') {
                                 $fieldKey1 = $fieldKey . '_1';
@@ -627,6 +627,52 @@ if (! function_exists('where_detail')) {
                     $queryReturn['value'][$key] = $value;
                 }
             }
+        }
+
+        return $queryReturn;
+    }
+}
+
+if (! function_exists('where_raw')) {
+    /**
+     * Menambahkan raw WHERE clause ke query
+     * 
+     * @param string|array<string> $rawWhere Raw SQL WHERE clause atau array of WHERE clauses
+     * @param array<string, mixed> $queryReturn Query return array dengan format ['query' => '', 'value' => []]
+     * @param array<string, mixed> $bindings Optional bindings untuk parameterized query
+     * 
+     * @return array<string, string>
+     */
+    function where_raw($rawWhere, array $queryReturn = ['query' => '', 'value' => []], array $bindings = []): array
+    {
+        // Jika input adalah array, proses setiap elemen
+        if (is_array($rawWhere)) {
+            foreach ($rawWhere as $where) {
+                if (is_string($where) && trim($where) !== '') {
+                    // Bersihkan WHERE clause dari kata kunci WHERE di awal jika ada
+                    $where = trim($where);
+                    $where = preg_replace('/^\s*WHERE\s+/i', '', $where);
+                    $where = preg_replace('/^\s*AND\s+/i', '', $where);
+
+                    if ($where !== '') {
+                        $queryReturn['query'] .= ' AND ' . $where;
+                    }
+                }
+            }
+        } elseif (is_string($rawWhere) && trim($rawWhere) !== '') {
+            // Bersihkan WHERE clause dari kata kunci WHERE di awal jika ada
+            $rawWhere = trim($rawWhere);
+            $rawWhere = preg_replace('/^\s*WHERE\s+/i', '', $rawWhere);
+            $rawWhere = preg_replace('/^\s*AND\s+/i', '', $rawWhere);
+
+            if ($rawWhere !== '') {
+                $queryReturn['query'] .= ' AND ' . $rawWhere;
+            }
+        }
+
+        // Merge bindings jika ada
+        if (!empty($bindings)) {
+            $queryReturn['value'] = array_merge($queryReturn['value'], $bindings);
         }
 
         return $queryReturn;
@@ -856,6 +902,12 @@ if (! function_exists('generate_data_query')) {
         $whereParams = isset($query['where_detail']) && is_array($query['where_detail']) ? $query['where_detail'] : [];
         $filterQuery = where_detail($whereParams, $filterQuery);
 
+        // Process where_raw if exists
+        if (isset($query['where_raw']) && !empty($query['where_raw'])) {
+            $whereRawBindings = isset($query['where_raw_bindings']) && is_array($query['where_raw_bindings']) ? $query['where_raw_bindings'] : [];
+            $filterQuery = where_raw($query['where_raw'], $filterQuery, $whereRawBindings);
+        }
+
         $groupBy = ! empty($query['group_by']) ? 'GROUP BY ' . $query['group_by'] : '';
         $havingParams = isset($query['having']) && is_array($query['having']) ? $query['having'] : [];
 
@@ -918,22 +970,25 @@ if (! function_exists('generate_data_query')) {
         // =========================
         $queryResult = $db->query($sqlQuery, $havingQuery['value']);
 
-        $dataReturn = [];
-        $dataReturn['results'] = [];
-
-        if ($queryResult->getNumRows() > 0) {
-            foreach ($queryResult->getResultArray() as $row) {
-                $sanitizedRow = sanitization_response($row, $query['exclude_numeric_conversion'] ?? []);
-                $dataReturn['results'][] = ! $isArray
-                    ? (object) $sanitizedRow
-                    : $sanitizedRow;
-            }
-        }
-
         // Debug mode: return SQL string
         if ($returnQuery) {
             return $sqlQuery;
         }
+
+        // =========================
+        // Process Query Results
+        // =========================
+        $dataReturn = [];
+        $results = [];
+
+        if ($queryResult->getNumRows() > 0) {
+            $dataArray = $queryResult->getResultArray();
+            foreach ($dataArray as $row) {
+                $results[] = sanitization_response($row, $query['exclude_numeric_conversion'] ?? []);
+            }
+        }
+
+        $dataReturn['results'] = $results;
 
         // =========================
         // Pagination Count
