@@ -572,6 +572,7 @@ if (! function_exists('where_detail')) {
                     $query = '';
 
                     foreach ($y as $k => $v) {
+                        $kKey = str_replace('.', '_', $k);
                         if (is_array($v) && isset($v['c'])) {
                             if ($v['v'] === null) {
                                 if ($v['c'] === '=') {
@@ -580,21 +581,21 @@ if (! function_exists('where_detail')) {
                                     $query .= " OR {$k} IS NOT NULL";
                                 }
                             } elseif ($v['c'] === 'BETWEEN') {
-                                $fieldKey1 = $k . '_1';
-                                $fieldKey2 = $k . '_2';
+                                $fieldKey1 = $kKey . '_1';
+                                $fieldKey2 = $kKey . '_2';
                                 $query .= " OR {$k} BETWEEN :{$fieldKey1}: AND :{$fieldKey2}: ";
                                 $queryReturn['value'][$fieldKey1] = $v['v'];
                                 $queryReturn['value'][$fieldKey2] = $v['v2'];
                             } else {
-                                $query .= " OR {$k} {$v['c']} :{$k}:";
-                                $queryReturn['value'][$k] = $v['v'];
+                                $query .= " OR {$k} {$v['c']} :{$kKey}:";
+                                $queryReturn['value'][$kKey] = $v['v'];
                             }
                         } else {
                             if ($v === null) {
                                 $query .= " OR {$k} IS NULL";
                             } else {
-                                $query .= " OR {$k} = :{$k}:";
-                                $queryReturn['value'][$k] = $v;
+                                $query .= " OR {$k} = :{$kKey}:";
+                                $queryReturn['value'][$kKey] = $v;
                             }
                         }
                     }
@@ -603,6 +604,7 @@ if (! function_exists('where_detail')) {
                     }
                 }
             } elseif (is_array($value) && isset($value['c'])) {
+                $keyKey = str_replace('.', '_', $key);
                 if ($value['v'] === null) {
                     if ($value['c'] === '=') {
                         $queryReturn['query'] .= " AND {$key} IS NULL";
@@ -610,21 +612,22 @@ if (! function_exists('where_detail')) {
                         $queryReturn['query'] .= " AND {$key} IS NOT NULL";
                     }
                 } elseif ($value['c'] === 'BETWEEN') {
-                    $fieldKey1 = $key . '_1';
-                    $fieldKey2 = $key . '_2';
+                    $fieldKey1 = $keyKey . '_1';
+                    $fieldKey2 = $keyKey . '_2';
                     $queryReturn['query'] .= " AND {$key} BETWEEN :{$fieldKey1}: AND :{$fieldKey2}: ";
                     $queryReturn['value'][$fieldKey1] = $value['v'];
                     $queryReturn['value'][$fieldKey2] = $value['v2'];
                 } else {
-                    $queryReturn['query'] .= " AND {$key} {$value['c']} :{$key}:";
-                    $queryReturn['value'][$key] = $value['v'];
+                    $queryReturn['query'] .= " AND {$key} {$value['c']} :{$keyKey}:";
+                    $queryReturn['value'][$keyKey] = $value['v'];
                 }
             } else {
+                $keyKey = str_replace('.', '_', $key);
                 if ($value === null) {
                     $queryReturn['query'] .= " AND {$key} IS NULL";
                 } else {
-                    $queryReturn['query'] .= " AND {$key} = :{$key}:";
-                    $queryReturn['value'][$key] = $value;
+                    $queryReturn['query'] .= " AND {$key} = :{$keyKey}:";
+                    $queryReturn['value'][$keyKey] = $value;
                 }
             }
         }
