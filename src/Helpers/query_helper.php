@@ -1,7 +1,5 @@
 <?php
 
-use CodeIgniter\Database\BaseConnection;
-
 if (! function_exists('validate_date')) {
     function validate_date(string $date, string $format = 'Y-m-d')
     {
@@ -125,26 +123,19 @@ if (! function_exists('sanitization_response')) {
      */
     function sanitization_response(array $data, array $exclude_columns = []): array
     {
-        // Menggunakan pass-by-reference (&) agar lebih efisien,
-        // karena kita memodifikasi nilai array secara langsung.
         foreach ($data as $key => &$val) {
-            // 1. Tangani nilai NULL di awal
             if ($val === null) {
                 $val = '';
-
-                continue; // Lanjut ke iterasi berikutnya
+                continue;
             }
 
-            // Menggunakan switch (true) untuk struktur yang lebih bersih
             switch (true) {
-                // 2. Tangani JSON Object & Array
                 case str_ends_with($key, 'object'):
                 case str_ends_with($key, 'array'):
                     $decoded = json_decode(empty($val) ? '[]' : $val, true);
                     $val = $decoded === null ? [] : $decoded;
                     break;
 
-                // 3. Gabungkan penanganan Date & Datetime
                 case str_ends_with($key, 'datetime'):
                 case str_ends_with($key, 'date'):
                     if (empty($val) || str_starts_with($val, '0000-00-00')) {
@@ -161,25 +152,20 @@ if (! function_exists('sanitization_response')) {
                     }
                     break;
 
-                // 4. Tangani Boolean
                 case str_ends_with($key, 'bool'):
                     $val = (bool) $val;
                     break;
 
-                // 5. Penanganan Numerik (Integer dan Float)
                 case is_numeric($val):
-                    // Pengecualian untuk kolom yang numerik tapi sebaiknya tetap string
                     if (
-                        // Logika ID kini menangani 'id' dan yang berakhiran '_id'
                         ($key === 'id' || str_ends_with($key, '_id'))
                         || str_contains($key, 'is_')
                         || str_ends_with($key, 'phone')
                         || in_array($key, $exclude_columns, true)
                     ) {
-                        break; // Biarkan sebagai string dan jangan proses lebih lanjut
+                        break;
                     }
 
-                    // Cek apakah ada titik desimal untuk menentukan apakah ini float
                     if (str_contains((string) $val, '.')) {
                         $val = (float) $val;
                     } else {
@@ -648,11 +634,9 @@ if (! function_exists('where_raw')) {
      */
     function where_raw($rawWhere, array $queryReturn = ['query' => '', 'value' => []], array $bindings = []): array
     {
-        // Jika input adalah array, proses setiap elemen
         if (is_array($rawWhere)) {
             foreach ($rawWhere as $where) {
                 if (is_string($where) && trim($where) !== '') {
-                    // Bersihkan WHERE clause dari kata kunci WHERE di awal jika ada
                     $where = trim($where);
                     $where = preg_replace('/^\s*WHERE\s+/i', '', $where);
                     $where = preg_replace('/^\s*AND\s+/i', '', $where);
@@ -663,7 +647,6 @@ if (! function_exists('where_raw')) {
                 }
             }
         } elseif (is_string($rawWhere) && trim($rawWhere) !== '') {
-            // Bersihkan WHERE clause dari kata kunci WHERE di awal jika ada
             $rawWhere = trim($rawWhere);
             $rawWhere = preg_replace('/^\s*WHERE\s+/i', '', $rawWhere);
             $rawWhere = preg_replace('/^\s*AND\s+/i', '', $rawWhere);
@@ -673,7 +656,6 @@ if (! function_exists('where_raw')) {
             }
         }
 
-        // Merge bindings jika ada
         if (!empty($bindings)) {
             $queryReturn['value'] = array_merge($queryReturn['value'], $bindings);
         }
@@ -683,7 +665,18 @@ if (! function_exists('where_raw')) {
 }
 
 if (! function_exists('generate_code')) {
-    function generate_code(BaseConnection $db, $table, $field, $where = [], $prefix = '', $digit = 5)
+    /**
+     * Generate sequential code using PDO
+     * 
+     * @param PDO $pdo PDO connection instance
+     * @param string $table Table name
+     * @param string $field Field name for code
+     * @param array $where Where conditions
+     * @param string $prefix Code prefix
+     * @param int $digit Number of digits for sequential number
+     * @return string Generated code
+     */
+    function generate_code(PDO $pdo, $table, $field, $where = [], $prefix = '', $digit = 5)
     {
         $queryWhere = where_detail($where);
 
@@ -693,14 +686,18 @@ if (! function_exists('generate_code')) {
         ";
         if ($queryWhere['query'] != '') {
             $sql .= ' WHERE 1 ' . ltrim($queryWhere['query'], 'AND');
-            $query = $db->query($sql, $queryWhere['value']);
+            $stmt = $pdo->prepare($sql);
+            foreach ($queryWhere['value'] as $key => $val) {
+                $stmt->bindValue($key, $val);
+            }
+            $stmt->execute();
+            $row = $stmt->fetch(PDO::FETCH_OBJ);
         } else {
-            $query = $db->query($sql);
+            $stmt = $pdo->query($sql);
+            $row = $stmt->fetch(PDO::FETCH_OBJ);
         }
 
-        if ($query->getNumRows() > 0) {
-            $row = $query->getRow();
-
+        if ($row && isset($row->code)) {
             return $prefix . $row->code;
         }
 
@@ -709,7 +706,16 @@ if (! function_exists('generate_code')) {
 }
 
 if (! function_exists('generate_random_code')) {
-    function generate_random_code(BaseConnection $db, $table, $field, $length = 5)
+    /**
+     * Generate random unique code using PDO
+     * 
+     * @param PDO $pdo PDO connection instance
+     * @param string $table Table name
+     * @param string $field Field name to check uniqueness
+     * @param int $length Code length
+     * @return string Random unique code
+     */
+    function generate_random_code(PDO $pdo, $table, $field, $length = 5)
     {
         $characters = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
         $charactersLength = strlen($characters);
@@ -718,9 +724,10 @@ if (! function_exists('generate_random_code')) {
         for ($i = 0; $i < $length; $i++) {
             $randomString .= $characters[random_int(0, $charactersLength - 1)];
         }
-        $data = $db->query("SELECT {$field} FROM {$table} WHERE {$field} = '{$randomString}'");
-        if ($data->getNumRows() > 0) {
-            return generate_random_code($db, $table, $field, $length);
+        $stmt = $pdo->prepare("SELECT {$field} FROM {$table} WHERE {$field} = ?");
+        $stmt->execute([$randomString]);
+        if ($stmt->fetchColumn() > 0) {
+            return generate_random_code($pdo, $table, $field, $length);
         }
 
         return $randomString;
@@ -728,7 +735,16 @@ if (! function_exists('generate_random_code')) {
 }
 
 if (! function_exists('generate_detail_query')) {
-    function generate_detail_query($query, BaseConnection $db, $isArray = true, $returnQuery = false)
+    /**
+     * Generate detail query using PDO
+     * 
+     * @param array $query Query configuration
+     * @param PDO $pdo PDO connection instance
+     * @param bool $isArray Return as array or object
+     * @param bool $returnQuery Return SQL query instead of result
+     * @return array|string Query result or SQL string
+     */
+    function generate_detail_query($query, PDO $pdo, $isArray = true, $returnQuery = false)
     {
         $result = [];
 
@@ -780,20 +796,24 @@ if (! function_exists('generate_detail_query')) {
 
         $sqlQuery .= ' LIMIT 1';
 
-        $queryDb = $db->query($sqlQuery, $havingQuery['value']);
+        if ($returnQuery) {
+            return $sqlQuery;
+        }
+
+        $stmt = $pdo->prepare($sqlQuery);
+        foreach ($havingQuery['value'] as $key => $val) {
+            $stmt->bindValue($key, $val);
+        }
+        $stmt->execute();
 
         $result = [];
 
-        if ($queryDb->getNumRows() > 0) {
-            $data = $queryDb->getRowArray();
+        if ($stmt->rowCount() > 0) {
+            $data = $stmt->fetch(PDO::FETCH_ASSOC);
             $result = sanitization_response($data, $query['exclude_numeric_conversion'] ?? []);
             if (! $isArray) {
                 $result = (object) $result;
             }
-        }
-
-        if ($returnQuery) {
-            return (string) $db->getLastQuery();
         }
 
         return ['results' => $result];
@@ -810,10 +830,8 @@ if (! function_exists('normalize_array')) {
 
         foreach ($arr as $key => $value) {
             if (is_int($key)) {
-                // Kalau key numeric, jadikan value sebagai key dan value
                 $normalized[$value] = $value;
             } else {
-                // Kalau associative → tetap pakai key dan value
                 $normalized[$key] = $value;
             }
         }
@@ -823,7 +841,17 @@ if (! function_exists('normalize_array')) {
 }
 
 if (! function_exists('generate_data_query')) {
-    function generate_data_query(array $params, array $query, BaseConnection $db, $isArray = true, $returnQuery = false)
+    /**
+     * Generate data query with pagination using PDO
+     * 
+     * @param array $params Parameters (page, limit, search, sort, filter, etc.)
+     * @param array $query Query configuration
+     * @param PDO $pdo PDO connection instance
+     * @param bool $isArray Return as array or object
+     * @param bool $returnQuery Return SQL query instead of result
+     * @return array Query result with pagination
+     */
+    function generate_data_query(array $params, array $query, PDO $pdo, $isArray = true, $returnQuery = false)
     {
         // =========================
         // Pagination Setup
@@ -857,46 +885,29 @@ if (! function_exists('generate_data_query')) {
         }
 
         if (! empty($params['search'])) {
-            // Siapkan variabel untuk menampung field yang akan digunakan untuk pencarian.
             $searchFields = [];
             $querySearchFields = normalize_array($query['field_show']);
 
-            // --- PRIORITAS 1: Gunakan $params['field_search'] jika tersedia ---
-            // Logika ini paling kompleks karena memvalidasi setiap kolom.
             if (! empty($params['field_search'])) {
-                // Ubah string input (misal: "name, product_code, kolom_salah") menjadi array.
                 $fieldsToProcess = explode(',', $params['field_search']);
 
                 foreach ($fieldsToProcess as $field) {
-                    $field = trim($field); // Bersihkan dari spasi
-
-                    // Cek apakah field adalah KEY yang valid (contoh: 'product_name').
+                    $field = trim($field);
                     if (array_key_exists($field, $querySearchFields)) {
                         $searchFields[] = $field;
-                    }
-                    // Jika bukan key, cek apakah field adalah VALUE yang valid (contoh: 'name').
-                    else {
+                    } else {
                         $key = array_search($field, $querySearchFields);
-                        // Jika value ditemukan, tambahkan KEY yang sesuai ke hasil.
                         if ($key !== false) {
                             $searchFields[] = $key;
                         }
                     }
-                    // Jika field bukan key maupun value yang valid, maka akan otomatis tereliminasi.
                 }
-            }
-
-            // --- PRIORITAS 2: Gunakan $query['field_search'] jika prioritas 1 gagal ---
-            elseif (! empty($query['field_search'])) {
+            } elseif (! empty($query['field_search'])) {
                 $searchFields = $query['field_search'];
-            }
-
-            // --- PRIORITAS 3: Fallback ke semua field yang bisa ditampilkan ---
-            else {
+            } else {
                 $searchFields = array_keys($querySearchFields);
             }
 
-            // Panggil fungsi search_query HANYA jika ada field yang valid untuk dicari.
             if (! empty($searchFields)) {
                 $filterQuery = search_query($params['search'], $searchFields, $filterQuery);
             }
@@ -905,7 +916,6 @@ if (! function_exists('generate_data_query')) {
         $whereParams = isset($query['where_detail']) && is_array($query['where_detail']) ? $query['where_detail'] : [];
         $filterQuery = where_detail($whereParams, $filterQuery);
 
-        // Process where_raw if exists
         if (isset($query['where_raw']) && !empty($query['where_raw'])) {
             $whereRawBindings = isset($query['where_raw_bindings']) && is_array($query['where_raw_bindings']) ? $query['where_raw_bindings'] : [];
             $filterQuery = where_raw($query['where_raw'], $filterQuery, $whereRawBindings);
@@ -968,15 +978,18 @@ if (! function_exists('generate_data_query')) {
             $sqlQuery .= " LIMIT {$start}, {$limit}";
         }
 
-        // =========================
-        // Execute Main Query
-        // =========================
-        $queryResult = $db->query($sqlQuery, $havingQuery['value']);
-
-        // Debug mode: return SQL string
         if ($returnQuery) {
             return $sqlQuery;
         }
+
+        // =========================
+        // Execute Main Query
+        // =========================
+        $stmt = $pdo->prepare($sqlQuery);
+        foreach ($havingQuery['value'] as $key => $val) {
+            $stmt->bindValue($key, $val);
+        }
+        $stmt->execute();
 
         // =========================
         // Process Query Results
@@ -984,9 +997,8 @@ if (! function_exists('generate_data_query')) {
         $dataReturn = [];
         $results = [];
 
-        if ($queryResult->getNumRows() > 0) {
-            $dataArray = $queryResult->getResultArray();
-            foreach ($dataArray as $row) {
+        if ($stmt->rowCount() > 0) {
+            while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
                 $results[] = sanitization_response($row, $query['exclude_numeric_conversion'] ?? []);
             }
         }
@@ -998,8 +1010,12 @@ if (! function_exists('generate_data_query')) {
         // =========================
         if ($pagination) {
             $countQuery = buildCountQuery($query, $filterQuery, $groupBy, $havingQuery, $selectQuery);
-            $queryPagination = $db->query($countQuery, $havingQuery['value']);
-            $total = (int) $queryPagination->getRow()->total;
+            $countStmt = $pdo->prepare($countQuery);
+            foreach ($havingQuery['value'] as $key => $val) {
+                $countStmt->bindValue($key, $val);
+            }
+            $countStmt->execute();
+            $total = (int) $countStmt->fetch(PDO::FETCH_OBJ)->total;
             $dataReturn['pagination'] = page_generate($total, $page, $limit);
         }
 
@@ -1008,12 +1024,6 @@ if (! function_exists('generate_data_query')) {
 
     /**
      * Helper untuk membangun query count
-     *
-     * @param mixed $query
-     * @param mixed $filterQuery
-     * @param mixed $groupBy
-     * @param mixed $havingQuery
-     * @param mixed $selectQuery
      */
     function buildCountQuery(array $query, array $filterQuery, string $groupBy, array $havingQuery, string $selectQuery)
     {
@@ -1040,34 +1050,59 @@ if (! function_exists('generate_data_query')) {
 }
 
 if (! function_exists('select_max')) {
-    function select_max(BaseConnection $db, $table, $field, $where)
+    /**
+     * Get maximum value from a field using PDO
+     * 
+     * @param PDO $pdo PDO connection instance
+     * @param string $table Table name
+     * @param string $field Field name
+     * @param array $where Where conditions
+     * @return int Maximum value
+     */
+    function select_max(PDO $pdo, $table, $field, $where)
     {
         $queryWhere = where_detail($where);
         $sqlQuery = "SELECT IFNULL(MAX({$field}),0) as jumlah FROM {$table} ";
         if ($queryWhere['query'] != '') {
             $sqlQuery .= 'WHERE ' . ltrim(trim($queryWhere['query']), 'AND');
         }
-        // echo $sqlQuery;
-        $queryResult = $db->query($sqlQuery, $queryWhere['value']);
-        // echo $db->getLastQuery();
-        if ($queryResult->getNumRows() > 0) {
-            return $queryResult->getRow()->jumlah;
+        $stmt = $pdo->prepare($sqlQuery);
+        foreach ($queryWhere['value'] as $key => $val) {
+            $stmt->bindValue($key, $val);
+        }
+        $stmt->execute();
+        if ($stmt->rowCount() > 0) {
+            return (int) $stmt->fetch(PDO::FETCH_OBJ)->jumlah;
         }
 
         return 0;
     }
 }
+
 if (! function_exists('select_min')) {
-    function select_min(BaseConnection $db, $table, $field, $where)
+    /**
+     * Get minimum value from a field using PDO
+     * 
+     * @param PDO $pdo PDO connection instance
+     * @param string $table Table name
+     * @param string $field Field name
+     * @param array $where Where conditions
+     * @return int Minimum value
+     */
+    function select_min(PDO $pdo, $table, $field, $where)
     {
         $queryWhere = where_detail($where);
         $sqlQuery = "SELECT IFNULL(MIN({$field}),0) as jumlah FROM {$table} ";
         if ($queryWhere['query'] != '') {
             $sqlQuery .= 'WHERE ' . ltrim(trim($queryWhere['query']), 'AND');
         }
-        $queryResult = $db->query($sqlQuery, $queryWhere['value']);
-        if ($queryResult->getNumRows() > 0) {
-            return $queryResult->getRow()->jumlah;
+        $stmt = $pdo->prepare($sqlQuery);
+        foreach ($queryWhere['value'] as $key => $val) {
+            $stmt->bindValue($key, $val);
+        }
+        $stmt->execute();
+        if ($stmt->rowCount() > 0) {
+            return (int) $stmt->fetch(PDO::FETCH_OBJ)->jumlah;
         }
 
         return 0;
@@ -1075,7 +1110,13 @@ if (! function_exists('select_min')) {
 }
 
 if (! function_exists('generate_client_code')) {
-    function generate_client_code(BaseConnection $db)
+    /**
+     * Generate unique client code using PDO
+     * 
+     * @param PDO $pdo PDO connection instance
+     * @return string Unique client code
+     */
+    function generate_client_code(PDO $pdo)
     {
         $characters = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
         $charactersLength = strlen($characters);
@@ -1084,9 +1125,10 @@ if (! function_exists('generate_client_code')) {
         for ($i = 0; $i < 5; $i++) {
             $randomString .= $characters[random_int(0, $charactersLength - 1)];
         }
-        $data = $db->query("SELECT client_code FROM client WHERE client_code = '{$randomString}'");
-        if ($data->getNumRows() > 0) {
-            return generate_client_code($db);
+        $stmt = $pdo->prepare("SELECT client_code FROM client WHERE client_code = ?");
+        $stmt->execute([$randomString]);
+        if ($stmt->fetchColumn() > 0) {
+            return generate_client_code($pdo);
         }
 
         return $randomString;
@@ -1094,7 +1136,20 @@ if (! function_exists('generate_client_code')) {
 }
 
 if (! function_exists('insert_media')) {
-    function insert_media(BaseConnection $db, $caption, $url, $type, $mime, $full_path, $masterId, $table)
+    /**
+     * Insert media record using PDO
+     * 
+     * @param PDO $pdo PDO connection instance
+     * @param string $caption Media caption
+     * @param string $url Media URL
+     * @param string $type Media type
+     * @param string $mime Media MIME type
+     * @param string $full_path Full file path
+     * @param int $masterId Master record ID
+     * @param string $table Master table name
+     * @return int|false Media ID or false on failure
+     */
+    function insert_media(PDO $pdo, $caption, $url, $type, $mime, $full_path, $masterId, $table)
     {
         $data = [
             'media_caption' => $caption,
@@ -1105,38 +1160,66 @@ if (! function_exists('insert_media')) {
             'media_datetime' => date('Y-m-d H:i:s'),
         ];
 
-        $db->table('site_media')->insert($data);
+        $fields = implode(', ', array_keys($data));
+        $placeholders = ':' . implode(', :', array_keys($data));
+        
+        $sql = "INSERT INTO site_media ({$fields}) VALUES ({$placeholders})";
+        $stmt = $pdo->prepare($sql);
+        foreach ($data as $key => $val) {
+            $stmt->bindValue(":{$key}", $val);
+        }
+        
+        if ($stmt->execute()) {
+            $mediaId = $pdo->lastInsertId();
 
-        $mediaId = $db->insertID();
+            $sqlRel = "INSERT INTO site_media_relation (media_relation_media_id, media_relation_master_id, media_relation_table) 
+                       VALUES (:media_id, :master_id, :table_name)";
+            $stmtRel = $pdo->prepare($sqlRel);
+            $stmtRel->bindValue(':media_id', $mediaId);
+            $stmtRel->bindValue(':master_id', $masterId);
+            $stmtRel->bindValue(':table_name', $table);
+            $stmtRel->execute();
 
-        $db->table('site_media_relation')->insert([
-            'media_relation_media_id' => $mediaId,
-            'media_relation_master_id' => $masterId,
-            'media_relation_table' => $table,
-        ]);
+            return $mediaId;
+        }
+
+        return false;
     }
 }
 
 if (! function_exists('delete_media')) {
-    function delete_media(BaseConnection $db, $masterId, $typeMaster)
+    /**
+     * Delete media and related files using PDO
+     * 
+     * @param PDO $pdo PDO connection instance
+     * @param int $masterId Master record ID
+     * @param string $typeMaster Master table name
+     * @return bool Success status
+     */
+    function delete_media(PDO $pdo, $masterId, $typeMaster)
     {
-        $mediaId = $db->table('site_media_relation')
-            ->select('media_relation_media_id')
-            ->where('media_relation_table', $typeMaster)
-            ->where('media_relation_master_id', $masterId)
-            ->get()
-            ->getResultArray();
+        $stmt = $pdo->prepare("SELECT media_relation_media_id FROM site_media_relation 
+                               WHERE media_relation_table = :table AND media_relation_master_id = :master_id");
+        $stmt->bindValue(':table', $typeMaster);
+        $stmt->bindValue(':master_id', $masterId);
+        $stmt->execute();
+        $mediaId = $stmt->fetchAll(PDO::FETCH_COLUMN);
 
         if (! empty($mediaId)) {
-            $mediaId = array_column($mediaId, 'media_relation_media_id');
+            $placeholders = implode(',', array_fill(0, count($mediaId), '?'));
+            
+            $fileStmt = $pdo->prepare("SELECT media_full_path FROM site_media WHERE media_id IN ({$placeholders})");
+            foreach ($mediaId as $index => $id) {
+                $fileStmt->bindValue($index + 1, $id);
+            }
+            $fileStmt->execute();
+            $files = $fileStmt->fetchAll(PDO::FETCH_ASSOC);
 
-            $files = $db->table('site_media')
-                ->select('media_full_path')
-                ->whereIn('media_id', $mediaId)
-                ->get()
-                ->getResultArray();
-
-            $db->table('site_media')->whereIn('media_id', $mediaId)->delete();
+            $delStmt = $pdo->prepare("DELETE FROM site_media WHERE media_id IN ({$placeholders})");
+            foreach ($mediaId as $index => $id) {
+                $delStmt->bindValue($index + 1, $id);
+            }
+            $delStmt->execute();
 
             foreach ($files as $file) {
                 if (file_exists($file['media_full_path'])) {
@@ -1144,5 +1227,7 @@ if (! function_exists('delete_media')) {
                 }
             }
         }
+
+        return true;
     }
 }

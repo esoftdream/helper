@@ -2,9 +2,9 @@
     "name": "esoftdream/helper",
     "license": "proprietary",
     "type": "esoftdream-module",
+    "description": "Helper module - Standalone version (no framework dependency)",
     "require": {
-        "php": "^8.0",
-        "codeigniter4/framework": "^4"
+        "php": "^8.0"
     },
     "autoload": {
         "psr-4": {
@@ -15,6 +15,7 @@
         ]
     },
     "require-dev": {
-        "rector/rector": "^2.1"
+        "rector/rector": "^2.1",
+        "phpunit/phpunit": "^9.0"
     }
 }
