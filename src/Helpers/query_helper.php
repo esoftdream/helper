@@ -145,6 +145,7 @@ if (! function_exists('sanitization_response')) {
                     break;
 
                 // 3. Gabungkan penanganan Date & Datetime
+                case str_ends_with($key, '_at'):
                 case str_ends_with($key, 'datetime'):
                 case str_ends_with($key, 'date'):
                     if (empty($val) || str_starts_with($val, '0000-00-00')) {
@@ -156,7 +157,7 @@ if (! function_exists('sanitization_response')) {
                     if ($timestamp === false || $timestamp <= 0) {
                         $val = '';
                     } else {
-                        $format = str_ends_with($key, 'datetime') ? 'Y-m-d H:i:s' : 'Y-m-d';
+                        $format = (str_ends_with($key, 'datetime') || str_ends_with($key, '_at')) ? 'Y-m-d H:i:s' : 'Y-m-d';
                         $val = date($format, $timestamp);
                     }
                     break;
@@ -240,7 +241,7 @@ if (! function_exists('filter_params')) {
                 $fieldKey = $field;
                 if (is_array($value)) {
                     foreach ($value as $comparison => $val) {
-                        if (str_ends_with($field, 'datetime')) {
+                        if (str_ends_with($field, 'datetime') || str_ends_with($field, '_at')) {
                             if (validate_date($val)) {
                                 $field = "DATE({$field})";
                             } elseif (! validate_date($val, 'Y-m-d H:i:s')) {
@@ -322,7 +323,7 @@ if (! function_exists('filter_params')) {
                         }
                     }
                 } else {
-                    if (str_ends_with($field, 'datetime')) {
+                    if (str_ends_with($field, 'datetime') || str_ends_with($field, '_at')) {
                         $field = 'date(' . $field . ')';
                         if (! validate_date($value)) {
                             $value = '';
@@ -479,7 +480,7 @@ if (! function_exists('filter_params_array')) {
                                 $queryReturn['value'][$fieldKey] = (string) $value;
                             }
                         }
-                        if (str_ends_with($field, 'datetime')) {
+                        if (str_ends_with($field, 'datetime') || str_ends_with($field, '_at')) {
                             $value1 = '';
                             $value2 = '';
                             if (strstr($value, '::')) {
@@ -540,10 +541,7 @@ if (! function_exists('search_query')) {
             if ($search === '' || $search === '0') {
                 continue;
             }
-            if (str_ends_with($row, 'datetime')) {
-                continue;
-            }
-            if (str_ends_with($row, 'date')) {
+            if (str_ends_with($row, '_at') || str_ends_with($row, 'datetime') || str_ends_with($row, 'date')) {
                 continue;
             }
             $query .= $row . ' LIKE :search: OR ';
